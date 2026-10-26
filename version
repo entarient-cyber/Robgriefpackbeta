@@ -1,0 +1,367 @@
+--!nocheck
+-- Rob griefer pack (beta) — executor environment only
+
+local Players = game:GetService("Players")
+local UIS     = game:GetService("UserInputService")
+local RS      = game:GetService("RunService")
+local TS      = game:GetService("TweenService")
+local LP      = Players.LocalPlayer
+
+-- Parent (CoreGui in executors; PlayerGui fallback)
+local guiParent
+pcall(function() guiParent = game:GetService("CoreGui") end)
+if not guiParent then guiParent = LP:WaitForChild("PlayerGui") end
+
+-- Palette
+local COL_BG      = Color3.fromRGB(22, 22, 28)
+local COL_PANEL   = Color3.fromRGB(30, 30, 38)
+local COL_ACCENT  = Color3.fromRGB(0, 170, 255)
+local COL_TEXT    = Color3.fromRGB(235, 235, 240)
+local COL_SUB     = Color3.fromRGB(150, 150, 160)
+local COL_STROKE  = Color3.fromRGB(45, 45, 55)
+
+local function new(class, props)
+	local inst = Instance.new(class)
+	for k, v in pairs(props or {}) do inst[k] = v end
+	return inst
+end
+
+-- Root GUI
+local gui = new("ScreenGui", {
+	Name = "RobGrieferPack", ResetOnSpawn = false, IgnoreGuiInset = true,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999, Parent = guiParent,
+})
+
+local main = new("Frame", {
+	Size = UDim2.fromOffset(560, 380),
+	Position = UDim2.new(0.5, -280, 0.5, -190),
+	BackgroundColor3 = COL_BG, BorderSizePixel = 0, ClipsDescendants = true, Parent = gui,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 10), Parent = main })
+new("UIStroke", { Color = COL_STROKE, Thickness = 1, Parent = main })
+
+-- Top bar
+local topBar = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = COL_PANEL, BorderSizePixel = 0, Parent = main,
+})
+new("Frame", {
+	Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, 0),
+	BackgroundColor3 = COL_STROKE, BorderSizePixel = 0, Parent = topBar,
+})
+
+new("TextLabel", {
+	Text = "  Rob griefer pack (beta)", TextColor3 = COL_TEXT,
+	TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold, TextSize = 14,
+	BackgroundTransparency = 1, Size = UDim2.new(1, -110, 1, 0), Position = UDim2.new(0, 10, 0, 0),
+	Parent = topBar,
+})
+
+local minBtn = new("TextButton", {
+	Text = "−", TextColor3 = COL_TEXT, Font = Enum.Font.GothamBold, TextSize = 20,
+	BackgroundTransparency = 1, Size = UDim2.fromOffset(30, 30),
+	Position = UDim2.new(1, -80, 0, 4), Parent = topBar,
+})
+local closeBtn = new("TextButton", {
+	Text = "×", TextColor3 = COL_TEXT, Font = Enum.Font.GothamBold, TextSize = 22,
+	BackgroundTransparency = 1, Size = UDim2.fromOffset(30, 30),
+	Position = UDim2.new(1, -45, 0, 4), Parent = topBar,
+})
+minBtn.MouseEnter:Connect(function() minBtn.TextColor3 = COL_ACCENT end)
+minBtn.MouseLeave:Connect(function() minBtn.TextColor3 = COL_TEXT end)
+closeBtn.MouseEnter:Connect(function() closeBtn.TextColor3 = Color3.fromRGB(255, 80, 80) end)
+closeBtn.MouseLeave:Connect(function() closeBtn.TextColor3 = COL_TEXT end)
+
+-- Dragging
+local dragging, dragStart, startPos
+topBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true; dragStart = input.Position; startPos = main.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+		end)
+	end
+end)
+UIS.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local d = input.Position - dragStart
+		main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+	end
+end)
+
+-- Sidebar + content
+local sidebar = new("Frame", {
+	Size = UDim2.new(0, 130, 1, -38), Position = UDim2.new(0, 0, 0, 38),
+	BackgroundColor3 = COL_PANEL, BorderSizePixel = 0, Parent = main,
+})
+local content = new("Frame", {
+	Size = UDim2.new(1, -130, 1, -38), Position = UDim2.new(0, 130, 0, 38),
+	BackgroundColor3 = COL_BG, BorderSizePixel = 0, Parent = main,
+})
+
+-- Minimize
+local minimized, savedSize = false, main.Size
+minBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	if minimized then
+		minBtn.Text = "+"; savedSize = main.Size
+		main.Size = UDim2.fromOffset(560, 38)
+		sidebar.Visible = false; content.Visible = false
+	else
+		minBtn.Text = "−"; main.Size = savedSize
+		sidebar.Visible = true; content.Visible = true
+	end
+end)
+
+-- Tabs
+local tabs = {}
+local function makeTab(name, titleText)
+	local btn = new("TextButton", {
+		Text = "   " .. titleText, TextColor3 = COL_SUB, TextXAlignment = Enum.TextXAlignment.Left,
+		Font = Enum.Font.Gotham, TextSize = 13, BackgroundTransparency = 1,
+		Size = UDim2.new(1, -10, 0, 34), Position = UDim2.new(0, 5, 0, 5 + #tabs * 40),
+		Parent = sidebar,
+	})
+	local page = new("ScrollingFrame", {
+		Name = name, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+		BorderSizePixel = 0, ScrollBarThickness = 4, ScrollBarImageColor3 = COL_STROKE,
+		CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		Visible = false, Parent = content,
+	})
+	new("UIPadding", {
+		PaddingTop = UDim.new(0, 8), PaddingLeft = UDim.new(0, 10),
+		PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 8), Parent = page,
+	})
+	new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6), Parent = page })
+	tabs[name] = { btn = btn, page = page }
+	btn.MouseButton1Click:Connect(function()
+		for _, t in pairs(tabs) do t.page.Visible = false; t.btn.TextColor3 = COL_SUB end
+		page.Visible = true; btn.TextColor3 = COL_ACCENT
+	end)
+	btn.MouseEnter:Connect(function() if not page.Visible then btn.TextColor3 = COL_TEXT end end)
+	btn.MouseLeave:Connect(function() if not page.Visible then btn.TextColor3 = COL_SUB end end)
+	return page
+end
+
+local function makeSection(parent, text)
+	return new("TextLabel", {
+		Text = text, TextColor3 = COL_ACCENT, Font = Enum.Font.GothamBold, TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 22), Parent = parent,
+	})
+end
+
+local function makeToggle(parent, label, default, callback)
+	local row = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 32), BackgroundColor3 = COL_PANEL,
+		BorderSizePixel = 0, Parent = parent,
+	})
+	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = row })
+	new("TextLabel", {
+		Text = "  " .. label, TextColor3 = COL_TEXT, TextXAlignment = Enum.TextXAlignment.Left,
+		Font = Enum.Font.Gotham, TextSize = 13, BackgroundTransparency = 1,
+		Size = UDim2.new(1, -70, 1, 0), Parent = row,
+	})
+	local track = new("Frame", {
+		Size = UDim2.fromOffset(40, 20), Position = UDim2.new(1, -50, 0.5, -10),
+		BackgroundColor3 = Color3.fromRGB(60, 60, 70), BorderSizePixel = 0, Parent = row,
+	})
+	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
+	local knob = new("Frame", {
+		Size = UDim2.fromOffset(16, 16), Position = UDim2.new(0, 2, 0.5, -8),
+		BackgroundColor3 = Color3.fromRGB(220, 220, 230), BorderSizePixel = 0, Parent = track,
+	})
+	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
+	local btn = new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Parent = row })
+
+	local state = default and true or false
+	local function render(anim)
+		local tPos = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+		local kCol = state and COL_ACCENT or Color3.fromRGB(220, 220, 230)
+		local tCol = state and COL_ACCENT or Color3.fromRGB(60, 60, 70)
+		if anim then
+			TS:Create(knob,  TweenInfo.new(0.15), { Position = tPos, BackgroundColor3 = kCol }):Play()
+			TS:Create(track, TweenInfo.new(0.15), { BackgroundColor3 = tCol }):Play()
+		else
+			knob.Position = tPos; knob.BackgroundColor3 = kCol; track.BackgroundColor3 = tCol
+		end
+	end
+	render(false)
+	btn.MouseButton1Click:Connect(function() state = not state; render(true); callback(state) end)
+	return row
+end
+
+local function makeInput(parent, label, default, callback)
+	local row = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 32), BackgroundColor3 = COL_PANEL,
+		BorderSizePixel = 0, Parent = parent,
+	})
+	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = row })
+	new("TextLabel", {
+		Text = "  " .. label, TextColor3 = COL_TEXT, TextXAlignment = Enum.TextXAlignment.Left,
+		Font = Enum.Font.Gotham, TextSize = 13, BackgroundTransparency = 1,
+		Size = UDim2.new(0.55, 0, 1, 0), Parent = row,
+	})
+	local box = new("TextBox", {
+		Text = tostring(default), PlaceholderText = tostring(default), PlaceholderColor3 = COL_SUB,
+		TextColor3 = COL_TEXT, Font = Enum.Font.Gotham, TextSize = 13,
+		BackgroundColor3 = COL_BG, BorderSizePixel = 0, ClearTextOnFocus = false,
+		Size = UDim2.new(0.4, -10, 1, -8), Position = UDim2.new(0.6, 0, 0, 4), Parent = row,
+	})
+	new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = box })
+	new("UIStroke", { Color = COL_STROKE, Thickness = 1, Parent = box })
+	box.FocusLost:Connect(function()
+		local n = tonumber(box.Text)
+		if n then callback(n) else box.Text = tostring(default) end
+	end)
+	return row
+end
+
+-- ============================================================
+-- State
+-- ============================================================
+local deleteAuraEnabled = false
+local deleteRange       = 35
+local flyEnabled        = false
+local flySpeed          = 50
+
+-- ============================================================
+-- Delete Aura (solara method — descendant scan of workspace.Bricks)
+-- ============================================================
+local function startDeleteAura()
+	task.spawn(function()
+		while deleteAuraEnabled and gui.Parent do
+			task.wait(0.1)
+			local bricks = workspace:FindFirstChild("Bricks")
+			local char   = LP.Character
+			if not bricks or not char then continue end
+			local origin = char:GetPivot().Position
+			local parts  = {}
+			for _, v in ipairs(bricks:GetDescendants()) do
+				if v:IsA("BasePart") and v.Parent and (v.Position - origin).Magnitude <= deleteRange then
+					parts[#parts + 1] = v
+				end
+			end
+			for _, v in ipairs(parts) do
+				if not deleteAuraEnabled then break end
+				task.spawn(function()
+					pcall(function()
+						local c = LP.Character
+						if not c then return end
+						if LP.Backpack:FindFirstChild("Delete") then
+							LP.Backpack.Delete.Parent = c
+							task.wait()
+						end
+						if not c:FindFirstChild("Delete") then return end
+						local tool = c.Delete
+						local ev = tool:FindFirstChild("origevent")
+						if ev then
+							ev:Invoke(v, v.Position)
+						else
+							local sc = tool:FindFirstChild("Script")
+							if sc and sc:FindFirstChild("Event") then
+								sc.Event:FireServer(v, v.Position)
+							end
+						end
+					end)
+				end)
+				task.wait(0.03)
+			end
+		end
+	end)
+end
+
+-- ============================================================
+-- Smooth Fly (BodyVelocity + velocity lerp)
+-- ============================================================
+local flyBV, flyConn
+local flyCurrentVel = Vector3.zero
+
+local function stopFly()
+	if flyBV then flyBV:Destroy(); flyBV = nil end
+	if flyConn then flyConn:Disconnect(); flyConn = nil end
+	local c = LP.Character
+	if c and c:FindFirstChild("HumanoidRootPart") then
+		c.HumanoidRootPart.Velocity = Vector3.zero
+	end
+	flyCurrentVel = Vector3.zero
+end
+
+local function startFly()
+	if not flyEnabled then return end
+	stopFly()
+	local char = LP.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	flyBV = Instance.new("BodyVelocity")
+	flyBV.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+	flyBV.Velocity = Vector3.zero
+	flyBV.Parent = hrp
+
+	flyConn = RS.RenderStepped:Connect(function(dt)
+		if not flyEnabled or not flyBV or not flyBV.Parent then return end
+		local cam = workspace.CurrentCamera
+		if not cam then return end
+		local cf = cam.CFrame
+		local move = Vector3.zero
+		if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + cf.LookVector  end
+		if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - cf.LookVector  end
+		if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - cf.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + cf.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.yAxis end
+		if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.LeftShift) then
+			move = move - Vector3.yAxis
+		end
+		if move.Magnitude > 0 then move = move.Unit end
+		local target = move * flySpeed
+		local alpha  = 1 - math.exp(-dt * 10)  -- frame-rate independent smoothing
+		flyCurrentVel = flyCurrentVel:Lerp(target, alpha)
+		flyBV.Velocity = flyCurrentVel
+	end)
+end
+
+-- Respawn → restart fly if enabled
+LP.CharacterAdded:Connect(function(char)
+	if flyEnabled then
+		char:WaitForChild("HumanoidRootPart", 10)
+		task.wait(0.3)
+		if flyEnabled then startFly() end
+	end
+end)
+
+-- ============================================================
+-- Build Grief tab
+-- ============================================================
+local griefPage = makeTab("grief", "Grief")
+
+makeSection(griefPage, "DELETE AURA")
+makeToggle(griefPage, "Enable Delete Aura", false, function(s)
+	deleteAuraEnabled = s
+	if s then startDeleteAura() end
+end)
+makeInput(griefPage, "Max Range", 35, function(n)
+	deleteRange = math.max(1, n)
+end)
+
+makeSection(griefPage, "FLY")
+makeToggle(griefPage, "Smooth Fly", false, function(s)
+	flyEnabled = s
+	if s then startFly() else stopFly() end
+end)
+makeInput(griefPage, "Fly Speed", 50, function(n)
+	flySpeed = math.max(1, n)
+end)
+
+-- Default tab
+tabs.grief.page.Visible = true
+tabs.grief.btn.TextColor3 = COL_ACCENT
+
+-- Cleanup on close
+closeBtn.MouseButton1Click:Connect(function()
+	deleteAuraEnabled = false
+	flyEnabled = false
+	stopFly()
+	task.wait(0.05)
+	gui:Destroy()
+end)
